@@ -4,14 +4,14 @@ const appState = {
     currentAreaName: '入口大厅',
     favoriteBooths: [1, 3],
     collectedProducts: [
-        { id: 'p1', name: 'VR头显Pro', booth: '未来科技体验馆', boothId: 1, icon: 'fa-vr-cardboard' },
-        { id: 'p2', name: '赛博朋克外套', booth: '数字时尚秀场', boothId: 2, icon: 'fa-user' },
-        { id: 'p3', name: '抽象数字画', booth: '数字艺术画廊', boothId: 3, icon: 'fa-image' },
+        { id: 'p-1-1', name: 'VR头显Pro', booth: '未来科技体验馆', boothId: 1, icon: 'fa-vr-cardboard' },
+        { id: 'p-2-0', name: '赛博朋克外套', booth: '数字时尚秀场', boothId: 2, icon: 'fa-user' },
+        { id: 'p-3-0', name: '抽象数字画', booth: '数字艺术画廊', boothId: 3, icon: 'fa-image' },
     ],
     collectedMaterials: [
-        { id: 'm1', name: '产品白皮书.pdf', booth: '未来科技体验馆', boothId: 1, size: '2.3MB', icon: 'fa-file-pdf' },
-        { id: 'm2', name: '品牌介绍.pptx', booth: '数字时尚秀场', boothId: 2, size: '8.5MB', icon: 'fa-file-powerpoint' },
-        { id: 'm3', name: '投资手册.docx', booth: '创业项目路演', boothId: 4, size: '1.2MB', icon: 'fa-file-word' },
+        { id: 'm-1-0', name: '产品白皮书.pdf', booth: '未来科技体验馆', boothId: 1, size: '2.3MB', icon: 'fa-file-pdf' },
+        { id: 'm-2-0', name: '品牌介绍.pptx', booth: '数字时尚秀场', boothId: 2, size: '8.5MB', icon: 'fa-file-powerpoint' },
+        { id: 'm-4-0', name: '投资手册.docx', booth: '创业项目路演', boothId: 4, size: '1.2MB', icon: 'fa-file-word' },
     ],
     avatarConfig: {
         hairstyle: 'h1',

@@ -40,7 +40,12 @@ function initNavigation() {
             document.getElementById(`page-${pageId}`).classList.add('active');
 
             if (pageId === 'avatar') {
+                const activeTab = document.querySelector('.cust-tab.active');
+                if (activeTab) {
+                    renderCustomizeItems(activeTab.dataset.category);
+                }
                 updateAvatarPreview();
+                refreshColorPaletteSelection();
             }
         });
     });
@@ -194,10 +199,54 @@ function renderNearbyVisitors() {
 
 function initBooths() {
     renderBooths('all');
+    renderFavoriteBooths();
     renderCollections();
     renderMaterials();
     initBoothFilters();
     initBoothModal();
+}
+
+function renderFavoriteBooths() {
+    const grid = document.getElementById('favorite-booths-grid');
+    if (!grid) return;
+    
+    const favBooths = mockData.booths.filter(b => appState.favoriteBooths.includes(b.id));
+    
+    if (favBooths.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 30px 0; color: var(--text-secondary); font-size: 13px;">暂无收藏的展位</div>';
+        return;
+    }
+    
+    grid.innerHTML = favBooths.map(booth => `
+        <div class="favorite-booth-card" data-booth-id="${booth.id}">
+            <button class="btn-remove-fav-booth" data-booth-id="${booth.id}" title="取消收藏">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="favorite-booth-icon"><i class="fas ${booth.icon}"></i></div>
+            <div class="favorite-booth-info">
+                <div class="favorite-booth-name">${booth.name}</div>
+                <div class="favorite-booth-meta">${booth.exhibitor}</div>
+            </div>
+        </div>
+    `).join('');
+
+    grid.querySelectorAll('.favorite-booth-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            if (!e.target.closest('.btn-remove-fav-booth')) {
+                openBoothModal(card.dataset.boothId);
+            }
+        });
+    });
+
+    grid.querySelectorAll('.btn-remove-fav-booth').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const boothId = parseInt(btn.dataset.boothId);
+            if (confirm('确定要取消收藏这个展位吗？')) {
+                toggleFavorite(boothId);
+            }
+        });
+    });
 }
 
 function renderBooths(filter) {
@@ -252,18 +301,6 @@ function renderBooths(filter) {
             e.stopPropagation();
             const boothId = parseInt(btn.dataset.favorite);
             toggleFavorite(boothId);
-            
-            const activeTab = document.querySelector('.filter-tabs .tab-btn.active');
-            if (activeTab && activeTab.dataset.filter === 'favorites') {
-                renderBooths('favorites');
-            } else {
-                const isFavorite = appState.favoriteBooths.includes(boothId);
-                btn.classList.toggle('active', isFavorite);
-                const icon = btn.querySelector('i');
-                icon.className = `${isFavorite ? 'fas' : 'far'} fa-star`;
-            }
-            
-            renderCollections();
         });
     });
 }
@@ -274,6 +311,110 @@ function toggleFavorite(boothId) {
         appState.favoriteBooths.splice(index, 1);
     } else {
         appState.favoriteBooths.push(boothId);
+    }
+    refreshAllBoothUI();
+}
+
+function refreshAllBoothUI() {
+    const activeTab = document.querySelector('.filter-tabs .tab-btn.active');
+    if (activeTab) {
+        renderBooths(activeTab.dataset.filter);
+    }
+    renderFavoriteBooths();
+    
+    const modal = document.getElementById('booth-modal');
+    if (modal && modal.classList.contains('active')) {
+        const btn = document.getElementById('btn-favorite-booth');
+        if (btn) {
+            const boothId = parseInt(btn.dataset.boothId);
+            const isFav = appState.favoriteBooths.includes(boothId);
+            btn.querySelector('i').className = `${isFav ? 'fas' : 'far'} fa-star`;
+            btn.lastChild.textContent = isFav ? ' 已收藏' : ' 收藏展位';
+            btn.classList.toggle('favorited', isFav);
+        }
+    }
+}
+
+function toggleProductCollection(product) {
+    const existingIndex = appState.collectedProducts.findIndex(p => p.id === product.id);
+    
+    if (existingIndex > -1) {
+        appState.collectedProducts.splice(existingIndex, 1);
+    } else {
+        appState.collectedProducts.push(product);
+    }
+    
+    refreshAllProductCollectionUI(product.boothId);
+}
+
+function refreshAllProductCollectionUI(boothId) {
+    renderCollections();
+    
+    const boothModal = document.getElementById('booth-modal');
+    if (boothModal && boothModal.classList.contains('active')) {
+        const btns = boothModal.querySelectorAll('.btn-collect-product-in-modal');
+        btns.forEach(btn => {
+            const bId = parseInt(btn.dataset.boothId);
+            const pIdx = parseInt(btn.dataset.productIdx);
+            const productId = `p-${bId}-${pIdx}`;
+            const isCollected = appState.collectedProducts.some(p => p.id === productId);
+            
+            btn.classList.toggle('collected', isCollected);
+            btn.querySelector('i').className = `${isCollected ? 'fas' : 'far'} fa-star`;
+            btn.lastChild.textContent = isCollected ? ' 已收藏' : ' 收藏展品';
+        });
+    }
+    
+    const insideModal = document.getElementById('booth-inside-modal');
+    if (insideModal && insideModal.classList.contains('active')) {
+        const btns = insideModal.querySelectorAll('.btn-collect-product.inside-btn');
+        btns.forEach(btn => {
+            const productId = btn.dataset.productId;
+            const isCollected = appState.collectedProducts.some(p => p.id === productId);
+            
+            btn.classList.toggle('collected', isCollected);
+            btn.querySelector('i').className = `${isCollected ? 'fas' : 'far'} fa-star`;
+            btn.lastChild.textContent = isCollected ? ' 已收藏' : ' 收藏';
+        });
+    }
+}
+
+function toggleMaterialCollection(material) {
+    const existingIndex = appState.collectedMaterials.findIndex(m => m.id === material.id);
+    
+    if (existingIndex > -1) {
+        return false;
+    } else {
+        appState.collectedMaterials.push(material);
+        refreshAllMaterialCollectionUI();
+        return true;
+    }
+}
+
+function removeMaterial(materialId) {
+    const existingIndex = appState.collectedMaterials.findIndex(m => m.id === materialId);
+    if (existingIndex > -1) {
+        appState.collectedMaterials.splice(existingIndex, 1);
+        refreshAllMaterialCollectionUI();
+        return true;
+    }
+    return false;
+}
+
+function refreshAllMaterialCollectionUI() {
+    renderMaterials();
+    
+    const insideModal = document.getElementById('booth-inside-modal');
+    if (insideModal && insideModal.classList.contains('active')) {
+        const btns = insideModal.querySelectorAll('.btn-download-material');
+        btns.forEach(btn => {
+            const materialId = btn.dataset.materialId;
+            const isCollected = appState.collectedMaterials.some(m => m.id === materialId);
+            
+            btn.classList.toggle('downloaded', isCollected);
+            btn.querySelector('i').className = isCollected ? 'fas fa-check' : 'fas fa-download';
+            btn.lastChild.textContent = isCollected ? ' 已领取' : ' 领取资料';
+        });
     }
 }
 
@@ -353,9 +494,9 @@ function renderMaterials() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const index = parseInt(btn.dataset.index);
-            if (confirm('确定要移除这份资料吗？')) {
-                appState.collectedMaterials.splice(index, 1);
-                renderMaterials();
+            const material = appState.collectedMaterials[index];
+            if (material && confirm('确定要移除这份资料吗？')) {
+                removeMaterial(material.id);
             }
         });
     });
@@ -453,12 +594,6 @@ function openBoothModal(boothId) {
     document.getElementById('btn-favorite-booth').addEventListener('click', () => {
         const id = parseInt(booth.id);
         toggleFavorite(id);
-        const isFav = appState.favoriteBooths.includes(id);
-        const btn = document.getElementById('btn-favorite-booth');
-        btn.querySelector('i').className = `${isFav ? 'fas' : 'far'} fa-star`;
-        btn.lastChild.textContent = isFav ? ' 已收藏' : ' 收藏展位';
-        btn.classList.toggle('favorited', isFav);
-        renderBooths(document.querySelector('.filter-tabs .tab-btn.active').dataset.filter);
     });
 
     document.querySelectorAll('.btn-collect-product-in-modal').forEach(btn => {
@@ -468,29 +603,13 @@ function openBoothModal(boothId) {
             const productName = btn.dataset.productName;
             const productIcon = btn.dataset.productIcon;
             const boothName = btn.dataset.boothName;
-            const productId = `p-${boothId}-${productIdx}`;
-            
-            const existingIndex = appState.collectedProducts.findIndex(p => p.id === productId);
-            
-            if (existingIndex > -1) {
-                appState.collectedProducts.splice(existingIndex, 1);
-                btn.classList.remove('collected');
-                btn.querySelector('i').className = 'far fa-star';
-                btn.lastChild.textContent = ' 收藏展品';
-            } else {
-                appState.collectedProducts.push({
-                    id: productId,
-                    name: productName,
-                    booth: boothName,
-                    boothId: boothId,
-                    icon: productIcon
-                });
-                btn.classList.add('collected');
-                btn.querySelector('i').className = 'fas fa-star';
-                btn.lastChild.textContent = ' 已收藏';
-            }
-            
-            renderCollections();
+            toggleProductCollection({
+                id: `p-${boothId}-${productIdx}`,
+                name: productName,
+                booth: boothName,
+                boothId: boothId,
+                icon: productIcon
+            });
         });
     });
     
@@ -606,27 +725,18 @@ function openBoothInside(boothId) {
     content.querySelectorAll('.btn-collect-product.inside-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const productId = btn.dataset.productId;
-            const existingIndex = appState.collectedProducts.findIndex(p => p.id === productId);
+            const productName = btn.dataset.productName;
+            const productIcon = btn.dataset.productIcon;
+            const boothName = btn.dataset.boothName;
+            const boothId = parseInt(btn.dataset.boothId);
             
-            if (existingIndex > -1) {
-                appState.collectedProducts.splice(existingIndex, 1);
-                btn.classList.remove('collected');
-                btn.querySelector('i').className = 'far fa-star';
-                btn.lastChild.textContent = ' 收藏';
-            } else {
-                appState.collectedProducts.push({
-                    id: productId,
-                    name: btn.dataset.productName,
-                    booth: btn.dataset.boothName,
-                    boothId: parseInt(btn.dataset.boothId),
-                    icon: btn.dataset.productIcon
-                });
-                btn.classList.add('collected');
-                btn.querySelector('i').className = 'fas fa-star';
-                btn.lastChild.textContent = ' 已收藏';
-            }
-            
-            renderCollections();
+            toggleProductCollection({
+                id: productId,
+                name: productName,
+                booth: boothName,
+                boothId: boothId,
+                icon: productIcon
+            });
         });
     });
 
@@ -635,23 +745,18 @@ function openBoothInside(boothId) {
             if (btn.classList.contains('downloaded')) return;
             
             const materialId = btn.dataset.materialId;
-            const existing = appState.collectedMaterials.find(m => m.id === materialId);
+            const materialName = btn.dataset.materialName;
+            const materialIcon = btn.dataset.materialIcon;
+            const materialSize = btn.dataset.materialSize;
+            const boothName = btn.dataset.boothName;
             
-            if (!existing) {
-                appState.collectedMaterials.push({
-                    id: materialId,
-                    name: btn.dataset.materialName,
-                    booth: btn.dataset.boothName,
-                    size: btn.dataset.materialSize,
-                    icon: btn.dataset.materialIcon
-                });
-                
-                btn.classList.add('downloaded');
-                btn.querySelector('i').className = 'fas fa-check';
-                btn.lastChild.textContent = ' 已领取';
-                
-                renderMaterials();
-            }
+            toggleMaterialCollection({
+                id: materialId,
+                name: materialName,
+                booth: boothName,
+                size: materialSize,
+                icon: materialIcon
+            });
         });
     });
 
@@ -792,6 +897,14 @@ function initColorPalette() {
             updateAvatarPreview();
         });
     });
+    refreshColorPaletteSelection();
+}
+
+function refreshColorPaletteSelection() {
+    const colors = document.querySelectorAll('.color-option');
+    colors.forEach(color => {
+        color.classList.toggle('active', color.dataset.color === appState.avatarConfig.outfitColor);
+    });
 }
 
 function updateAvatarPreview() {
@@ -800,68 +913,62 @@ function updateAvatarPreview() {
     const torso = document.querySelector('.avatar-torso');
     const arms = document.querySelector('.avatar-arms');
     const legs = document.querySelector('.avatar-legs');
-    const accessoryEl = document.querySelector('.avatar-accessory');
     const previewContainer = document.getElementById('avatar-preview');
+    const avatarBody = document.querySelector('.avatar-body');
+
+    if (!avatarBody) return;
 
     if (head) {
         head.style.background = config.skinColor;
     }
+
     if (torso) {
         torso.style.background = config.outfitColor;
-    }
-    if (arms) {
-        arms.style.setProperty('--arm-color', config.outfitColor);
-    }
-    if (legs) {
-        legs.style.background = config.outfitColor;
-        legs.style.filter = 'brightness(0.8)';
-    }
-
-    if (!accessoryEl && previewContainer) {
-        const acc = document.createElement('div');
-        acc.className = 'avatar-accessory';
-        acc.style.cssText = `
-            position: absolute;
-            top: 25%;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 28px;
-            color: var(--primary-color);
-            z-index: 10;
-            pointer-events: none;
-        `;
-        previewContainer.appendChild(acc);
-    }
-
-    const accEl = document.querySelector('.avatar-accessory');
-    if (accEl) {
-        if (config.accessory) {
-            const accItem = mockData.customizeItems.accessory.find(a => a.id === config.accessory);
-            if (accItem) {
-                accEl.innerHTML = `<i class="fas ${accItem.icon}"></i>`;
-                accEl.style.display = 'block';
-            }
-        } else {
-            accEl.style.display = 'none';
+        torso.className = 'avatar-torso';
+        const outfitNum = config.outfit.replace('o', '');
+        if (outfitNum !== '1') {
+            torso.classList.add(`style-${outfitNum}`);
         }
     }
 
-    const hairEl = document.querySelector('.avatar-hair');
-    if (!hairEl && head) {
-        const hair = document.createElement('div');
-        hair.className = 'avatar-hair';
-        hair.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 70px;
-            height: 35px;
-            border-radius: 35px 35px 0 0;
-            background: #2D3436;
-            z-index: 5;
-        `;
-        head.parentElement.insertBefore(hair, head);
+    if (arms) {
+        arms.style.setProperty('--arm-color', config.outfitColor);
+    }
+
+    if (legs) {
+        legs.style.background = config.outfitColor;
+        legs.style.filter = 'brightness(0.85)';
+    }
+
+    let hairEl = avatarBody.querySelector('.avatar-hair');
+    if (!hairEl) {
+        hairEl = document.createElement('div');
+        hairEl.className = 'avatar-hair';
+        avatarBody.insertBefore(hairEl, head || avatarBody.firstChild);
+    }
+    
+    hairEl.style.background = config.hairColor || '#2D3436';
+    hairEl.className = 'avatar-hair';
+    const hairNum = config.hairstyle.replace('h', '');
+    if (hairNum !== '1') {
+        hairEl.classList.add(`style-${hairNum}`);
+    }
+
+    let accEl = avatarBody.querySelector('.avatar-accessory');
+    if (!accEl) {
+        accEl = document.createElement('div');
+        accEl.className = 'avatar-accessory';
+        avatarBody.appendChild(accEl);
+    }
+
+    if (config.accessory) {
+        const accItem = mockData.customizeItems.accessory.find(a => a.id === config.accessory);
+        if (accItem) {
+            accEl.innerHTML = `<i class="fas ${accItem.icon}"></i>`;
+            accEl.classList.add('show');
+        }
+    } else {
+        accEl.classList.remove('show');
     }
 }
 
