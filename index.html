@@ -258,6 +258,9 @@
                             <div class="section-header">
                                 <h2 class="section-title"><i class="fas fa-file-download"></i> 已领资料</h2>
                                 <div class="section-controls">
+                                    <button class="btn-batch-toggle" id="btn-material-batch">
+                                        <i class="fas fa-tasks"></i> 批量管理
+                                    </button>
                                     <select class="filter-select" id="material-booth-filter">
                                         <option value="all">全部展位</option>
                                     </select>
@@ -267,6 +270,21 @@
                                         <option value="name">按名称</option>
                                     </select>
                                 </div>
+                            </div>
+                            <div class="batch-actions" id="material-batch-actions" style="display: none;">
+                                <label class="batch-select-all">
+                                    <input type="checkbox" id="material-select-all"> 全选
+                                </label>
+                                <span class="batch-count">已选 <span id="material-selected-count">0</span> 项</span>
+                                <button class="btn-batch-action" id="btn-batch-download">
+                                    <i class="fas fa-download"></i> 批量下载
+                                </button>
+                                <button class="btn-batch-action danger" id="btn-batch-remove">
+                                    <i class="fas fa-trash-alt"></i> 批量移除
+                                </button>
+                                <button class="btn-batch-cancel" id="btn-batch-cancel">
+                                    取消
+                                </button>
                             </div>
                             <div class="materials-grid" id="materials-grid">
                             </div>
@@ -594,6 +612,27 @@
                             </div>
                         </div>
 
+                        <div class="booth-interest-section">
+                            <h3><i class="fas fa-chart-pie"></i> 展位兴趣分析</h3>
+                            <div class="interest-grid">
+                                <div class="interest-card">
+                                    <h4><i class="fas fa-tags"></i> 感兴趣的分类</h4>
+                                    <div class="interest-categories" id="interest-categories">
+                                    </div>
+                                </div>
+                                <div class="interest-card">
+                                    <h4><i class="fas fa-bolt"></i> 最近活跃展位</h4>
+                                    <div class="interest-active" id="interest-active-booths">
+                                    </div>
+                                </div>
+                                <div class="interest-card">
+                                    <h4><i class="fas fa-trending-up"></i> 资料领取趋势</h4>
+                                    <div class="interest-trend" id="interest-material-trend">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="dashboard-bottom">
                             <div class="ranking-card">
                                 <h3><i class="fas fa-fire"></i> 热门展位排行</h3>
@@ -654,7 +693,12 @@
 
                         <div class="profile-content">
                             <div class="p-content" id="p-assets">
-                                <h3><i class="fas fa-box"></i> 我的参观资产</h3>
+                                <div class="assets-header">
+                                    <h3><i class="fas fa-box"></i> 我的参观资产</h3>
+                                    <button class="btn-export-assets" id="btn-export-assets">
+                                        <i class="fas fa-file-export"></i> 导出资产清单
+                                    </button>
+                                </div>
                                 <div class="assets-stats">
                                     <div class="asset-stat-card">
                                         <div class="asset-stat-icon booth-icon"><i class="fas fa-store"></i></div>
@@ -927,6 +971,22 @@
         <div class="modal-content material-detail-modal">
             <span class="modal-close material-detail-close">&times;</span>
             <div class="material-detail-content" id="material-detail-content">
+            </div>
+        </div>
+    </div>
+
+    <div id="visit-detail-modal" class="modal">
+        <div class="modal-content visit-detail-modal">
+            <span class="modal-close visit-detail-close">&times;</span>
+            <div class="visit-detail-content" id="visit-detail-content">
+            </div>
+        </div>
+    </div>
+
+    <div id="asset-export-modal" class="modal">
+        <div class="modal-content asset-export-modal">
+            <span class="modal-close asset-export-close">&times;</span>
+            <div class="asset-export-content" id="asset-export-content">
             </div>
         </div>
     </div>

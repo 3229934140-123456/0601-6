@@ -325,6 +325,7 @@ function refreshAllBoothUI() {
     renderFavoriteBooths();
     renderAssetsPage();
     updateAllStats();
+    renderInterestAnalysis();
     
     const modal = document.getElementById('booth-modal');
     if (modal && modal.classList.contains('active')) {
@@ -354,6 +355,7 @@ function toggleProductCollection(product) {
     refreshAllProductCollectionUI(product.boothId);
     updateAllStats();
     renderAssetsPage();
+    renderInterestAnalysis();
 }
 
 function refreshAllProductCollectionUI(boothId) {
@@ -420,6 +422,9 @@ function removeMaterial(materialId) {
 function refreshAllMaterialCollectionUI() {
     updateMaterialBoothFilter();
     renderMaterials();
+    renderAssetsPage();
+    updateAllStats();
+    renderInterestAnalysis();
     
     const insideModal = document.getElementById('booth-inside-modal');
     if (insideModal && insideModal.classList.contains('active')) {
@@ -528,8 +533,11 @@ function renderMaterials() {
         return;
     }
     
-    grid.innerHTML = materials.map((item) => `
-        <div class="material-item material-card" data-material-id="${item.id}">
+    grid.innerHTML = materials.map((item) => {
+        const isSelected = selectedMaterialIds.has(item.id);
+        return `
+        <div class="material-item material-card selectable ${materialBatchMode ? 'batch-mode' : ''} ${isSelected ? 'selected' : ''}" data-material-id="${item.id}">
+            <input type="checkbox" class="material-checkbox" data-material-id="${item.id}" ${isSelected ? 'checked' : ''}>
             <div class="material-icon"><i class="fas ${item.icon}"></i></div>
             <div class="material-info">
                 <div class="material-name">${item.name}</div>
@@ -550,7 +558,7 @@ function renderMaterials() {
                 </button>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 
     grid.querySelectorAll('.material-action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -576,6 +584,34 @@ function renderMaterials() {
             }
         });
     });
+    
+    grid.querySelectorAll('.material-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            if (!materialBatchMode) return;
+            if (e.target.closest('.material-action-btn')) return;
+            
+            const materialId = card.dataset.materialId;
+            toggleMaterialSelection(materialId);
+            
+            const checkbox = card.querySelector('.material-checkbox');
+            const isSelected = selectedMaterialIds.has(materialId);
+            card.classList.toggle('selected', isSelected);
+            if (checkbox) checkbox.checked = isSelected;
+        });
+    });
+    
+    grid.querySelectorAll('.material-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const materialId = checkbox.dataset.materialId;
+            toggleMaterialSelection(materialId);
+            
+            const card = checkbox.closest('.material-card');
+            if (card) {
+                card.classList.toggle('selected', selectedMaterialIds.has(materialId));
+            }
+        });
+    });
 }
 
 function initMaterialFilters() {
@@ -594,11 +630,42 @@ function initMaterialFilters() {
             }
         });
         
-        boothFilter.addEventListener('change', renderMaterials);
+        boothFilter.addEventListener('change', () => {
+            renderMaterials();
+            updateSelectAllCheckbox();
+        });
     }
     
     if (sortSelect) {
-        sortSelect.addEventListener('change', renderMaterials);
+        sortSelect.addEventListener('change', () => {
+            renderMaterials();
+            updateSelectAllCheckbox();
+        });
+    }
+    
+    const batchBtn = document.getElementById('btn-material-batch');
+    if (batchBtn) {
+        batchBtn.addEventListener('click', toggleMaterialBatchMode);
+    }
+    
+    const selectAll = document.getElementById('material-select-all');
+    if (selectAll) {
+        selectAll.addEventListener('change', toggleSelectAllMaterials);
+    }
+    
+    const batchDownload = document.getElementById('btn-batch-download');
+    if (batchDownload) {
+        batchDownload.addEventListener('click', batchDownloadMaterials);
+    }
+    
+    const batchRemove = document.getElementById('btn-batch-remove');
+    if (batchRemove) {
+        batchRemove.addEventListener('click', batchRemoveMaterials);
+    }
+    
+    const batchCancel = document.getElementById('btn-batch-cancel');
+    if (batchCancel) {
+        batchCancel.addEventListener('click', toggleMaterialBatchMode);
     }
 }
 
@@ -677,6 +744,7 @@ function openBoothModal(boothId) {
                                 data-product-idx="${idx}"
                                 data-product-name="${p.name}"
                                 data-product-icon="${p.icon}"
+                                data-product-desc="${p.desc}"
                                 data-booth-name="${booth.name}">
                             <i class="${isCollected ? 'fas' : 'far'} fa-star"></i> ${isCollected ? '已收藏' : '收藏展品'}
                         </button>
@@ -702,13 +770,18 @@ function openBoothModal(boothId) {
             const productIdx = parseInt(btn.dataset.productIdx);
             const productName = btn.dataset.productName;
             const productIcon = btn.dataset.productIcon;
+            const productDesc = btn.dataset.productDesc;
             const boothName = btn.dataset.boothName;
+            
+            recordProductView(boothId, productIdx);
+            
             toggleProductCollection({
                 id: `p-${boothId}-${productIdx}`,
                 name: productName,
                 booth: boothName,
                 boothId: boothId,
-                icon: productIcon
+                icon: productIcon,
+                desc: productDesc,
             });
         });
     });
@@ -881,6 +954,20 @@ function openBoothInside(boothId) {
 
 function startBoothVisit(boothId, boothName) {
     endBoothVisit();
+    
+    const existingIdx = appState.visitRecords.findIndex(r => r.boothId === boothId);
+    if (existingIdx === -1) {
+        appState.visitRecords.unshift({
+            boothId: boothId,
+            boothName: boothName,
+            lastVisitAt: Date.now(),
+            duration: 0,
+            viewedProducts: [],
+            collectedMaterials: [],
+            visitCount: 0,
+        });
+    }
+    
     appState.currentBoothVisit = {
         boothId: boothId,
         boothName: boothName,
@@ -904,16 +991,6 @@ function endBoothVisit() {
             record.visitCount += 1;
             appState.visitRecords.splice(existingIdx, 1);
             appState.visitRecords.unshift(record);
-        } else {
-            appState.visitRecords.unshift({
-                boothId: boothId,
-                boothName: boothName,
-                lastVisitAt: Date.now(),
-                duration: duration,
-                viewedProducts: [],
-                collectedMaterials: [],
-                visitCount: 1,
-            });
         }
         
         refreshAllVisitRecordUI();
@@ -941,6 +1018,7 @@ function refreshAllVisitRecordUI() {
     renderRecentVisits();
     renderAssetsPage();
     updateAllStats();
+    renderInterestAnalysis();
 }
 
 function renderRecentVisits() {
@@ -977,8 +1055,7 @@ function renderRecentVisits() {
     list.querySelectorAll('.recent-visit-item').forEach(item => {
         item.addEventListener('click', () => {
             const boothId = parseInt(item.dataset.boothId);
-            closeAllModals();
-            openBoothInside(boothId);
+            openVisitDetail(boothId);
         });
     });
 }
@@ -1063,6 +1140,34 @@ function initModals() {
         materialDetailModal.addEventListener('click', (e) => {
             if (e.target === materialDetailModal) {
                 materialDetailModal.classList.remove('active');
+            }
+        });
+    }
+
+    const visitDetailModal = document.getElementById('visit-detail-modal');
+    const visitDetailClose = document.querySelector('.visit-detail-close');
+    
+    if (visitDetailClose && visitDetailModal) {
+        visitDetailClose.addEventListener('click', () => {
+            visitDetailModal.classList.remove('active');
+        });
+        visitDetailModal.addEventListener('click', (e) => {
+            if (e.target === visitDetailModal) {
+                visitDetailModal.classList.remove('active');
+            }
+        });
+    }
+
+    const assetExportModal = document.getElementById('asset-export-modal');
+    const assetExportClose = document.querySelector('.asset-export-close');
+    
+    if (assetExportClose && assetExportModal) {
+        assetExportClose.addEventListener('click', () => {
+            assetExportModal.classList.remove('active');
+        });
+        assetExportModal.addEventListener('click', (e) => {
+            if (e.target === assetExportModal) {
+                assetExportModal.classList.remove('active');
             }
         });
     }
@@ -1751,6 +1856,7 @@ function initDashboard() {
     initStayTime();
     initOnlineCount();
     updateAllStats();
+    renderInterestAnalysis();
 }
 
 function renderBoothRanking() {
@@ -1818,6 +1924,14 @@ function initProfile() {
     renderAssetsPage();
     initRatingStars();
     initSubmitSurvey();
+    initExportButton();
+}
+
+function initExportButton() {
+    const exportBtn = document.getElementById('btn-export-assets');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', openExportModal);
+    }
 }
 
 function initProfileTabs() {
@@ -1981,8 +2095,14 @@ function openProductDetail(productId) {
     const toggleBtn = document.getElementById('btn-toggle-product-fav');
     if (toggleBtn) {
         toggleBtn.addEventListener('click', () => {
+            const wasCollected = appState.collectedProducts.some(p => p.id === productId);
             toggleProductCollection(product);
-            openProductDetail(productId);
+            
+            if (wasCollected) {
+                modal.classList.remove('active');
+            } else {
+                openProductDetail(productId);
+            }
         });
     }
     
@@ -2268,4 +2388,701 @@ function updateMaterialBoothFilter() {
     });
     
     boothFilter.value = currentValue || 'all';
+}
+
+function openVisitDetail(boothId) {
+    const modal = document.getElementById('visit-detail-modal');
+    const content = document.getElementById('visit-detail-content');
+    const record = appState.visitRecords.find(r => r.boothId === boothId);
+    const booth = mockData.booths.find(b => b.id === boothId);
+    
+    if (!record || !booth || !content) return;
+    
+    const lastVisitStr = formatTimeAgo(record.lastVisitAt);
+    const durationStr = formatDuration(record.duration);
+    
+    let viewedProductsHtml = '';
+    if (record.viewedProducts.length > 0) {
+        viewedProductsHtml = record.viewedProducts.map(pIdx => {
+            const product = booth.products[pIdx];
+            if (!product) return '';
+            return `
+                <div class="visit-product-item" data-product-idx="${pIdx}">
+                    <div class="visit-product-icon"><i class="fas ${product.icon}"></i></div>
+                    <div class="visit-product-name">${product.name}</div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        viewedProductsHtml = '<div class="visit-detail-empty">暂无浏览记录</div>';
+    }
+    
+    let collectedMaterialsHtml = '';
+    if (record.collectedMaterials.length > 0) {
+        collectedMaterialsHtml = record.collectedMaterials.map(mIdx => {
+            const material = booth.materials[mIdx];
+            if (!material) return '';
+            return `
+                <div class="visit-material-item" data-material-idx="${mIdx}">
+                    <div class="visit-material-icon"><i class="fas ${material.icon}"></i></div>
+                    <div class="visit-material-name">${material.name}</div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        collectedMaterialsHtml = '<div class="visit-detail-empty">暂无资料领取记录</div>';
+    }
+    
+    const timelineEvents = [];
+    timelineEvents.push({
+        time: record.lastVisitAt - record.duration * 1000,
+        text: '进入展位'
+    });
+    record.viewedProducts.forEach((pIdx, i) => {
+        const offset = Math.floor((record.duration / (record.viewedProducts.length + 1)) * (i + 1) * 1000);
+        const product = booth.products[pIdx];
+        if (product) {
+            timelineEvents.push({
+                time: record.lastVisitAt - record.duration * 1000 + offset,
+                text: `浏览展品：${product.name}`
+            });
+        }
+    });
+    record.collectedMaterials.forEach((mIdx, i) => {
+        const offset = Math.floor(record.duration * 0.7 * 1000 + i * 5000);
+        const material = booth.materials[mIdx];
+        if (material) {
+            timelineEvents.push({
+                time: record.lastVisitAt - record.duration * 1000 + offset,
+                text: `领取资料：${material.name}`
+            });
+        }
+    });
+    timelineEvents.push({
+        time: record.lastVisitAt,
+        text: '离开展位'
+    });
+    timelineEvents.sort((a, b) => a.time - b.time);
+    
+    const timelineHtml = timelineEvents.map(event => `
+        <div class="timeline-item">
+            <div class="timeline-time">${formatTime(event.time)}</div>
+            <div class="timeline-text">${event.text}</div>
+        </div>
+    `).join('');
+    
+    content.innerHTML = `
+        <div class="visit-detail-header">
+            <div class="visit-detail-icon"><i class="fas ${booth.icon}"></i></div>
+            <div class="visit-detail-title">
+                <h2>${record.boothName}</h2>
+                <p>累计参观 ${record.visitCount} 次 · 最近访问 ${lastVisitStr}</p>
+            </div>
+        </div>
+        
+        <div class="visit-detail-stats">
+            <div class="visit-stat-item">
+                <div class="visit-stat-value">${record.visitCount}</div>
+                <div class="visit-stat-label">参观次数</div>
+            </div>
+            <div class="visit-stat-item">
+                <div class="visit-stat-value">${durationStr}</div>
+                <div class="visit-stat-label">累计停留</div>
+            </div>
+            <div class="visit-stat-item">
+                <div class="visit-stat-value">${record.viewedProducts.length}</div>
+                <div class="visit-stat-label">浏览展品</div>
+            </div>
+            <div class="visit-stat-item">
+                <div class="visit-stat-value">${record.collectedMaterials.length}</div>
+                <div class="visit-stat-label">领取资料</div>
+            </div>
+        </div>
+        
+        <div class="visit-detail-section">
+            <h3><i class="fas fa-clock"></i> 最近访问时间线</h3>
+            <div class="visit-timeline">
+                ${timelineHtml}
+            </div>
+        </div>
+        
+        <div class="visit-detail-section">
+            <h3><i class="fas fa-star"></i> 看过的展品</h3>
+            <div class="visit-products-list">
+                ${viewedProductsHtml}
+            </div>
+        </div>
+        
+        <div class="visit-detail-section">
+            <h3><i class="fas fa-file-download"></i> 领过的资料</h3>
+            <div class="visit-materials-list">
+                ${collectedMaterialsHtml}
+            </div>
+        </div>
+        
+        <div class="visit-detail-actions">
+            <button class="detail-btn primary" id="visit-detail-enter">
+                <i class="fas fa-door-open"></i> 进入展位
+            </button>
+            <button class="detail-btn secondary" id="visit-detail-close">
+                <i class="fas fa-times"></i> 关闭
+            </button>
+        </div>
+    `;
+    
+    content.querySelectorAll('.visit-product-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const pIdx = parseInt(item.dataset.productIdx);
+            const productId = `p-${boothId}-${pIdx}`;
+            const product = appState.collectedProducts.find(p => p.id === productId);
+            if (product) {
+                modal.classList.remove('active');
+                openProductDetail(productId);
+            }
+        });
+    });
+    
+    content.querySelectorAll('.visit-material-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const mIdx = parseInt(item.dataset.materialIdx);
+            const materialId = `m-${boothId}-${mIdx}`;
+            const material = appState.collectedMaterials.find(m => m.id === materialId);
+            if (material) {
+                modal.classList.remove('active');
+                openMaterialDetail(materialId);
+            }
+        });
+    });
+    
+    const enterBtn = document.getElementById('visit-detail-enter');
+    if (enterBtn) {
+        enterBtn.addEventListener('click', () => {
+            modal.classList.remove('active');
+            openBoothInside(boothId);
+        });
+    }
+    
+    const closeBtn = document.getElementById('visit-detail-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            modal.classList.remove('active');
+        });
+    }
+    
+    modal.classList.add('active');
+}
+
+function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+}
+
+function openExportModal() {
+    const modal = document.getElementById('asset-export-modal');
+    const content = document.getElementById('asset-export-content');
+    if (!content) return;
+    
+    const boothOptions = mockData.booths.map(b => 
+        `<option value="${b.id}">${b.name}</option>`
+    ).join('');
+    
+    content.innerHTML = `
+        <div class="export-header">
+            <h2><i class="fas fa-file-export"></i> 导出参观资产清单</h2>
+            <p>选择筛选条件和导出内容，生成您的参观资产清单</p>
+        </div>
+        
+        <div class="export-filters">
+            <div class="export-filter-group">
+                <label>按展位筛选</label>
+                <select id="export-booth-filter">
+                    <option value="all">全部展位</option>
+                    ${boothOptions}
+                </select>
+            </div>
+            <div class="export-filter-group">
+                <label>时间范围</label>
+                <select id="export-time-range">
+                    <option value="all">全部时间</option>
+                    <option value="today">今天</option>
+                    <option value="week">最近7天</option>
+                    <option value="month">最近30天</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="export-options">
+            <label class="export-option">
+                <input type="checkbox" id="export-booths" checked>
+                <span>收藏的展位</span>
+            </label>
+            <label class="export-option">
+                <input type="checkbox" id="export-products" checked>
+                <span>收藏的展品</span>
+            </label>
+            <label class="export-option">
+                <input type="checkbox" id="export-materials" checked>
+                <span>已领资料</span>
+            </label>
+            <label class="export-option">
+                <input type="checkbox" id="export-visits" checked>
+                <span>参观记录</span>
+            </label>
+        </div>
+        
+        <div class="export-preview" id="export-preview">
+            请选择导出内容...
+        </div>
+        
+        <div class="export-actions">
+            <button class="detail-btn secondary" id="export-cancel">
+                <i class="fas fa-times"></i> 取消
+            </button>
+            <button class="detail-btn primary" id="export-download">
+                <i class="fas fa-download"></i> 下载清单
+            </button>
+        </div>
+    `;
+    
+    const updatePreview = () => {
+        const boothFilter = document.getElementById('export-booth-filter').value;
+        const timeRange = document.getElementById('export-time-range').value;
+        const includeBooths = document.getElementById('export-booths').checked;
+        const includeProducts = document.getElementById('export-products').checked;
+        const includeMaterials = document.getElementById('export-materials').checked;
+        const includeVisits = document.getElementById('export-visits').checked;
+        
+        const preview = generateExportPreview(
+            boothFilter, timeRange,
+            includeBooths, includeProducts, includeMaterials, includeVisits
+        );
+        document.getElementById('export-preview').textContent = preview;
+    };
+    
+    ['export-booth-filter', 'export-time-range', 'export-booths', 'export-products', 'export-materials', 'export-visits'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', updatePreview);
+    });
+    
+    document.getElementById('export-cancel').addEventListener('click', () => {
+        modal.classList.remove('active');
+    });
+    
+    document.getElementById('export-download').addEventListener('click', () => {
+        const boothFilter = document.getElementById('export-booth-filter').value;
+        const timeRange = document.getElementById('export-time-range').value;
+        const includeBooths = document.getElementById('export-booths').checked;
+        const includeProducts = document.getElementById('export-products').checked;
+        const includeMaterials = document.getElementById('export-materials').checked;
+        const includeVisits = document.getElementById('export-visits').checked;
+        
+        const content = generateExportPreview(
+            boothFilter, timeRange,
+            includeBooths, includeProducts, includeMaterials, includeVisits
+        );
+        
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `参观资产清单_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        alert('资产清单已下载！');
+    });
+    
+    updatePreview();
+    modal.classList.add('active');
+}
+
+function generateExportPreview(boothFilter, timeRange, includeBooths, includeProducts, includeMaterials, includeVisits) {
+    const now = Date.now();
+    let timeCutoff = 0;
+    if (timeRange === 'today') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        timeCutoff = today.getTime();
+    } else if (timeRange === 'week') {
+        timeCutoff = now - 7 * 24 * 60 * 60 * 1000;
+    } else if (timeRange === 'month') {
+        timeCutoff = now - 30 * 24 * 60 * 60 * 1000;
+    }
+    
+    const filterBoothId = boothFilter === 'all' ? null : parseInt(boothFilter);
+    const lines = [];
+    
+    lines.push('═══════════════════════════════════════════');
+    lines.push('           参 观 资 产 清 单');
+    lines.push('═══════════════════════════════════════════');
+    lines.push(`生成时间：${new Date().toLocaleString('zh-CN')}`);
+    lines.push('');
+    
+    if (includeBooths) {
+        let booths = mockData.booths.filter(b => appState.favoriteBooths.includes(b.id));
+        if (filterBoothId) booths = booths.filter(b => b.id === filterBoothId);
+        
+        lines.push('【收藏的展位】');
+        lines.push('───────────────────────────────────────────');
+        if (booths.length === 0) {
+            lines.push('  暂无收藏展位');
+        } else {
+            booths.forEach((b, i) => {
+                lines.push(`  ${i + 1}. ${b.name}`);
+                lines.push(`     分类：${b.category || '未分类'}`);
+                lines.push(`     位置：${b.location || '未知'}`);
+            });
+        }
+        lines.push(`  共 ${booths.length} 个展位`);
+        lines.push('');
+    }
+    
+    if (includeProducts) {
+        let products = appState.collectedProducts.filter(p => {
+            if (timeCutoff > 0 && p.collectedAt && p.collectedAt < timeCutoff) return false;
+            if (filterBoothId && p.boothId !== filterBoothId) return false;
+            return true;
+        });
+        
+        lines.push('【收藏的展品】');
+        lines.push('───────────────────────────────────────────');
+        if (products.length === 0) {
+            lines.push('  暂无收藏展品');
+        } else {
+            products.forEach((p, i) => {
+                lines.push(`  ${i + 1}. ${p.name}`);
+                lines.push(`     来源：${p.booth}`);
+                lines.push(`     说明：${p.desc || '暂无描述'}`);
+                if (p.collectedAt) {
+                    lines.push(`     收藏时间：${new Date(p.collectedAt).toLocaleString('zh-CN')}`);
+                }
+            });
+        }
+        lines.push(`  共 ${products.length} 件展品`);
+        lines.push('');
+    }
+    
+    if (includeMaterials) {
+        let materials = appState.collectedMaterials.filter(m => {
+            if (timeCutoff > 0 && m.collectedAt && m.collectedAt < timeCutoff) return false;
+            if (filterBoothId && m.boothId !== filterBoothId) return false;
+            return true;
+        });
+        
+        lines.push('【已领资料】');
+        lines.push('───────────────────────────────────────────');
+        if (materials.length === 0) {
+            lines.push('  暂无已领资料');
+        } else {
+            materials.forEach((m, i) => {
+                lines.push(`  ${i + 1}. ${m.name}`);
+                lines.push(`     来源：${m.booth}`);
+                lines.push(`     大小：${m.size}`);
+                lines.push(`     说明：${m.desc || '暂无描述'}`);
+                if (m.collectedAt) {
+                    lines.push(`     领取时间：${new Date(m.collectedAt).toLocaleString('zh-CN')}`);
+                }
+            });
+        }
+        lines.push(`  共 ${materials.length} 份资料`);
+        lines.push('');
+    }
+    
+    if (includeVisits) {
+        let records = appState.visitRecords.filter(r => {
+            if (timeCutoff > 0 && r.lastVisitAt < timeCutoff) return false;
+            if (filterBoothId && r.boothId !== filterBoothId) return false;
+            return true;
+        });
+        records.sort((a, b) => b.lastVisitAt - a.lastVisitAt);
+        
+        lines.push('【参观记录】');
+        lines.push('───────────────────────────────────────────');
+        if (records.length === 0) {
+            lines.push('  暂无参观记录');
+        } else {
+            records.forEach((r, i) => {
+                lines.push(`  ${i + 1}. ${r.boothName}`);
+                lines.push(`     参观次数：${r.visitCount} 次`);
+                lines.push(`     累计停留：${formatDuration(r.duration)}`);
+                lines.push(`     最近访问：${new Date(r.lastVisitAt).toLocaleString('zh-CN')}`);
+                lines.push(`     浏览展品：${r.viewedProducts.length} 件`);
+                lines.push(`     领取资料：${r.collectedMaterials.length} 份`);
+            });
+        }
+        lines.push(`  共 ${records.length} 条记录`);
+        lines.push('');
+    }
+    
+    lines.push('═══════════════════════════════════════════');
+    lines.push('      感谢您的参观，期待下次再会！');
+    lines.push('═══════════════════════════════════════════');
+    
+    return lines.join('\n');
+}
+
+let materialBatchMode = false;
+let selectedMaterialIds = new Set();
+
+function toggleMaterialBatchMode() {
+    materialBatchMode = !materialBatchMode;
+    selectedMaterialIds.clear();
+    
+    const batchActions = document.getElementById('material-batch-actions');
+    const batchBtn = document.getElementById('btn-material-batch');
+    
+    if (batchActions) {
+        batchActions.style.display = materialBatchMode ? 'flex' : 'none';
+    }
+    if (batchBtn) {
+        batchBtn.textContent = materialBatchMode ? '退出批量' : '批量管理';
+    }
+    
+    renderMaterials();
+    updateMaterialBatchCount();
+}
+
+function toggleMaterialSelection(materialId) {
+    if (selectedMaterialIds.has(materialId)) {
+        selectedMaterialIds.delete(materialId);
+    } else {
+        selectedMaterialIds.add(materialId);
+    }
+    updateMaterialBatchCount();
+    updateSelectAllCheckbox();
+}
+
+function updateMaterialBatchCount() {
+    const countEl = document.getElementById('material-selected-count');
+    if (countEl) countEl.textContent = selectedMaterialIds.size;
+}
+
+function updateSelectAllCheckbox() {
+    const checkbox = document.getElementById('material-select-all');
+    if (!checkbox) return;
+    
+    const visibleMaterials = getFilteredMaterials();
+    const allSelected = visibleMaterials.length > 0 && 
+        visibleMaterials.every(m => selectedMaterialIds.has(m.id));
+    checkbox.checked = allSelected;
+}
+
+function getFilteredMaterials() {
+    let materials = [...appState.collectedMaterials];
+    
+    const boothFilter = document.getElementById('material-booth-filter')?.value;
+    if (boothFilter && boothFilter !== 'all') {
+        materials = materials.filter(m => m.boothId === parseInt(boothFilter));
+    }
+    
+    const sort = document.getElementById('material-sort')?.value || 'time-desc';
+    if (sort === 'time-desc') {
+        materials.sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0));
+    } else if (sort === 'time-asc') {
+        materials.sort((a, b) => (a.collectedAt || 0) - (b.collectedAt || 0));
+    } else if (sort === 'name') {
+        materials.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    
+    return materials;
+}
+
+function toggleSelectAllMaterials() {
+    const checkbox = document.getElementById('material-select-all');
+    if (!checkbox) return;
+    
+    const materials = getFilteredMaterials();
+    
+    if (checkbox.checked) {
+        materials.forEach(m => selectedMaterialIds.add(m.id));
+    } else {
+        materials.forEach(m => selectedMaterialIds.delete(m.id));
+    }
+    
+    renderMaterials();
+    updateMaterialBatchCount();
+}
+
+function batchRemoveMaterials() {
+    if (selectedMaterialIds.size === 0) {
+        alert('请先选择要移除的资料');
+        return;
+    }
+    
+    if (!confirm(`确定要移除选中的 ${selectedMaterialIds.size} 份资料吗？`)) {
+        return;
+    }
+    
+    selectedMaterialIds.forEach(id => {
+        removeMaterial(id, true);
+    });
+    
+    selectedMaterialIds.clear();
+    toggleMaterialBatchMode();
+    refreshAllMaterialCollectionUI();
+}
+
+function batchDownloadMaterials() {
+    if (selectedMaterialIds.size === 0) {
+        alert('请先选择要下载的资料');
+        return;
+    }
+    
+    const materials = appState.collectedMaterials.filter(m => selectedMaterialIds.has(m.id));
+    const names = materials.map(m => m.name).join('、');
+    alert(`开始批量下载 ${materials.length} 份资料：\n${names}`);
+}
+
+function renderInterestAnalysis() {
+    renderInterestCategories();
+    renderActiveBooths();
+    renderMaterialTrend();
+}
+
+function renderInterestCategories() {
+    const container = document.getElementById('interest-categories');
+    if (!container) return;
+    
+    const categoryScores = {};
+    
+    appState.favoriteBooths.forEach(boothId => {
+        const booth = mockData.booths.find(b => b.id === boothId);
+        if (booth && booth.category) {
+            categoryScores[booth.category] = (categoryScores[booth.category] || 0) + 3;
+        }
+    });
+    
+    appState.collectedMaterials.forEach(m => {
+        const booth = mockData.booths.find(b => b.id === m.boothId);
+        if (booth && booth.category) {
+            categoryScores[booth.category] = (categoryScores[booth.category] || 0) + 2;
+        }
+    });
+    
+    appState.visitRecords.forEach(r => {
+        const booth = mockData.booths.find(b => b.id === r.boothId);
+        if (booth && booth.category) {
+            const score = Math.min(Math.floor(r.duration / 60), 5);
+            categoryScores[booth.category] = (categoryScores[booth.category] || 0) + score;
+        }
+    });
+    
+    const categories = Object.entries(categoryScores)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+    
+    if (categories.length === 0) {
+        container.innerHTML = '<div class="visit-detail-empty">暂无数据</div>';
+        return;
+    }
+    
+    const maxScore = Math.max(...categories.map(c => c[1]), 1);
+    
+    container.innerHTML = categories.map(([name, score]) => {
+        const percentage = Math.round((score / maxScore) * 100);
+        return `
+            <div class="category-bar-item">
+                <span class="category-name">${name}</span>
+                <div class="category-bar">
+                    <div class="category-bar-fill" style="width: ${percentage}%"></div>
+                </div>
+                <span class="category-value">${score}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderActiveBooths() {
+    const container = document.getElementById('interest-active-booths');
+    if (!container) return;
+    
+    const boothScores = {};
+    
+    appState.visitRecords.forEach(r => {
+        let score = r.visitCount * 2 + Math.floor(r.duration / 120);
+        if (appState.favoriteBooths.includes(r.boothId)) score += 5;
+        const materialCount = appState.collectedMaterials.filter(m => m.boothId === r.boothId).length;
+        score += materialCount * 3;
+        boothScores[r.boothId] = score;
+    });
+    
+    const topBooths = Object.entries(boothScores)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+    
+    if (topBooths.length === 0) {
+        container.innerHTML = '<div class="visit-detail-empty">暂无数据</div>';
+        return;
+    }
+    
+    container.innerHTML = topBooths.map(([boothId, score], idx) => {
+        const booth = mockData.booths.find(b => b.id === parseInt(boothId));
+        if (!booth) return '';
+        return `
+            <div class="active-booth-item" data-booth-id="${boothId}">
+                <span class="active-booth-rank">${idx + 1}</span>
+                <span class="active-booth-name">${booth.name}</span>
+                <span class="active-booth-score">${score}分</span>
+            </div>
+        `;
+    }).join('');
+    
+    container.querySelectorAll('.active-booth-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const boothId = parseInt(item.dataset.boothId);
+            openBoothInside(boothId);
+        });
+    });
+}
+
+function renderMaterialTrend() {
+    const container = document.getElementById('interest-material-trend');
+    if (!container) return;
+    
+    const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    const dayIndex = new Date().getDay() || 7;
+    
+    const weeklyData = [2, 1, 3, 2, 4, 3, appState.collectedMaterials.length % 5 + 1];
+    const maxVal = Math.max(...weeklyData, 1);
+    const total = weeklyData.reduce((a, b) => a + b, 0);
+    
+    const barsHtml = days.map((day, i) => {
+        const height = Math.round((weeklyData[i] / maxVal) * 100);
+        const isToday = (i + 1) === dayIndex;
+        return `
+            <div class="trend-bar-item">
+                <div class="trend-bar" style="height: ${Math.max(height, 5)}%; ${isToday ? 'opacity: 1;' : 'opacity: 0.6;'}"></div>
+                <span class="trend-label">${day}</span>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = `
+        <div class="trend-bars">
+            ${barsHtml}
+        </div>
+        <div class="trend-summary">
+            <div class="trend-summary-item">
+                <div class="trend-summary-value">${total}</div>
+                <div class="trend-summary-label">本周领取</div>
+            </div>
+            <div class="trend-summary-item">
+                <div class="trend-summary-value">${appState.collectedMaterials.length}</div>
+                <div class="trend-summary-label">累计资料</div>
+            </div>
+            <div class="trend-summary-item">
+                <div class="trend-summary-value">${Math.round(total / 7)}</div>
+                <div class="trend-summary-label">日均领取</div>
+            </div>
+        </div>
+    `;
+}
+
+function refreshAllInterestUI() {
+    renderInterestAnalysis();
 }
