@@ -167,9 +167,9 @@
                         </div>
 
                         <div class="lobby-actions">
-                            <button class="action-btn primary">
+                            <button class="action-btn primary" id="btn-enter-space">
                                 <i class="fas fa-play-circle"></i>
-                                进入空间
+                                <span id="enter-space-text">进入空间</span>
                             </button>
                             <button class="action-btn secondary">
                                 <i class="fas fa-user-friends"></i>
@@ -179,6 +179,42 @@
                                 <i class="fas fa-question-circle"></i>
                                 使用帮助
                             </button>
+                        </div>
+
+                        <div class="space-explore" id="space-explore" style="display: none;">
+                            <div class="explore-header">
+                                <div class="current-area-info">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                    <span>当前位置：<strong id="current-area-name">入口大厅</strong></span>
+                                </div>
+                                <div class="explore-actions">
+                                    <button class="explore-btn" id="btn-prev-area"><i class="fas fa-chevron-left"></i> 上一区域</button>
+                                    <button class="explore-btn" id="btn-next-area">下一区域 <i class="fas fa-chevron-right"></i></button>
+                                </div>
+                            </div>
+                            <div class="area-detail-card" id="area-detail">
+                                <div class="area-detail-icon">
+                                    <i class="fas fa-door-open" id="area-detail-icon"></i>
+                                </div>
+                                <div class="area-detail-info">
+                                    <h3 id="area-detail-title">入口大厅</h3>
+                                    <p id="area-detail-desc">欢迎来到元宇宙科技博览会入口大厅，您可以在此处休息、交流，或前往各个展区参观。</p>
+                                    <div class="area-stats">
+                                        <span><i class="fas fa-users"></i> 当前访客：<strong id="area-visitor-count">328</strong> 人</span>
+                                        <span><i class="fas fa-store"></i> 附近展位：<strong>12</strong> 个</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="nearby-visitors-section">
+                                <h3><i class="fas fa-user-friends"></i> 本区域访客</h3>
+                                <div class="nearby-visitors-grid" id="nearby-visitors-grid">
+                                </div>
+                            </div>
+                            <div class="visitor-interact-bar">
+                                <button class="interact-btn"><i class="fas fa-comment-dots"></i> 发起聊天</button>
+                                <button class="interact-btn"><i class="fas fa-user-plus"></i> 加为好友</button>
+                                <button class="interact-btn"><i class="fas fa-id-card"></i> 交换名片</button>
+                            </div>
                         </div>
 
                         <div class="visitors-section">
@@ -710,6 +746,54 @@
         <div class="modal-content booth-modal">
             <span class="modal-close">&times;</span>
             <div class="booth-detail" id="booth-detail">
+            </div>
+        </div>
+    </div>
+
+    <div id="booth-inside-modal" class="modal">
+        <div class="modal-content booth-inside-modal">
+            <span class="modal-close booth-inside-close">&times;</span>
+            <div class="booth-inside-content" id="booth-inside-content">
+            </div>
+        </div>
+    </div>
+
+    <div id="live-modal" class="modal">
+        <div class="modal-content live-modal">
+            <span class="modal-close live-close">&times;</span>
+            <div class="live-content">
+                <div class="live-header">
+                    <span class="live-badge"><i class="fas fa-broadcast-tower"></i> LIVE 直播中</span>
+                    <h2 id="live-title">2026元宇宙科技峰会开幕式</h2>
+                    <div class="live-stats">
+                        <span><i class="fas fa-eye"></i> <span id="live-viewers">12,847</span> 观看</span>
+                        <span><i class="fas fa-heart"></i> <span id="live-likes">3,256</span> 点赞</span>
+                    </div>
+                </div>
+                <div class="live-video-area">
+                    <div class="live-placeholder">
+                        <i class="fas fa-play-circle"></i>
+                        <p>直播画面</p>
+                    </div>
+                </div>
+                <div class="live-controls">
+                    <button class="live-control-btn"><i class="fas fa-thumbs-up"></i> 点赞</button>
+                    <button class="live-control-btn"><i class="fas fa-comment"></i> 弹幕</button>
+                    <button class="live-control-btn"><i class="fas fa-share-alt"></i> 分享</button>
+                    <button class="live-control-btn"><i class="fas fa-star"></i> 收藏</button>
+                </div>
+                <div class="live-chat">
+                    <h4><i class="fas fa-comments"></i> 直播互动</h4>
+                    <div class="live-chat-messages" id="live-chat-messages">
+                        <div class="live-msg"><span class="live-msg-user">科技达人小王:</span> 这场分享太棒了！</div>
+                        <div class="live-msg"><span class="live-msg-user">小美同学:</span> 期待新产品发布~</div>
+                        <div class="live-msg"><span class="live-msg-user">嘉宾张教授:</span> 感谢大家的支持</div>
+                    </div>
+                    <div class="live-chat-input">
+                        <input type="text" id="live-chat-input" placeholder="发个弹幕聊聊...">
+                        <button id="live-send-btn"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
