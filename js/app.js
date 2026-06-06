@@ -202,7 +202,9 @@ function initBooths() {
     renderFavoriteBooths();
     renderCollections();
     renderMaterials();
+    renderRecentVisits();
     initBoothFilters();
+    initMaterialFilters();
     initBoothModal();
 }
 
@@ -321,6 +323,8 @@ function refreshAllBoothUI() {
         renderBooths(activeTab.dataset.filter);
     }
     renderFavoriteBooths();
+    renderAssetsPage();
+    updateAllStats();
     
     const modal = document.getElementById('booth-modal');
     if (modal && modal.classList.contains('active')) {
@@ -341,10 +345,15 @@ function toggleProductCollection(product) {
     if (existingIndex > -1) {
         appState.collectedProducts.splice(existingIndex, 1);
     } else {
-        appState.collectedProducts.push(product);
+        appState.collectedProducts.push({
+            ...product,
+            collectedAt: Date.now()
+        });
     }
     
     refreshAllProductCollectionUI(product.boothId);
+    updateAllStats();
+    renderAssetsPage();
 }
 
 function refreshAllProductCollectionUI(boothId) {
@@ -385,8 +394,13 @@ function toggleMaterialCollection(material) {
     if (existingIndex > -1) {
         return false;
     } else {
-        appState.collectedMaterials.push(material);
+        appState.collectedMaterials.push({
+            ...material,
+            collectedAt: Date.now()
+        });
         refreshAllMaterialCollectionUI();
+        updateAllStats();
+        renderAssetsPage();
         return true;
     }
 }
@@ -396,12 +410,15 @@ function removeMaterial(materialId) {
     if (existingIndex > -1) {
         appState.collectedMaterials.splice(existingIndex, 1);
         refreshAllMaterialCollectionUI();
+        updateAllStats();
+        renderAssetsPage();
         return true;
     }
     return false;
 }
 
 function refreshAllMaterialCollectionUI() {
+    updateMaterialBoothFilter();
     renderMaterials();
     
     const insideModal = document.getElementById('booth-inside-modal');
@@ -439,13 +456,13 @@ function renderCollections() {
     if (!grid) return;
     
     if (appState.collectedProducts.length === 0) {
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px 0; color: var(--text-secondary); font-size: 14px;">暂无收藏展品</div>';
+        grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><i class="fas fa-star"></i>暂无收藏展品</div>';
         return;
     }
     
-    grid.innerHTML = appState.collectedProducts.map((item, index) => `
-        <div class="collection-item">
-            <button class="btn-remove-collection" data-index="${index}" title="取消收藏">
+    grid.innerHTML = appState.collectedProducts.map((item) => `
+        <div class="collection-item" data-product-id="${item.id}">
+            <button class="btn-remove-collection" data-product-id="${item.id}" title="取消收藏">
                 <i class="fas fa-times"></i>
             </button>
             <div class="collection-icon"><i class="fas ${item.icon}"></i></div>
@@ -456,13 +473,23 @@ function renderCollections() {
         </div>
     `).join('');
 
+    grid.querySelectorAll('.collection-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-remove-collection')) return;
+            const productId = item.dataset.productId;
+            openProductDetail(productId);
+        });
+    });
+
     grid.querySelectorAll('.btn-remove-collection').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const index = parseInt(btn.dataset.index);
+            const productId = btn.dataset.productId;
             if (confirm('确定要取消收藏这个展品吗？')) {
-                appState.collectedProducts.splice(index, 1);
-                renderCollections();
+                const product = appState.collectedProducts.find(p => p.id === productId);
+                if (product) {
+                    toggleProductCollection(product);
+                }
             }
         });
     });
@@ -472,34 +499,107 @@ function renderMaterials() {
     const grid = document.getElementById('materials-grid');
     if (!grid) return;
     
-    if (appState.collectedMaterials.length === 0) {
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px 0; color: var(--text-secondary); font-size: 14px;">暂无已领资料</div>';
+    let materials = [...appState.collectedMaterials];
+    
+    const boothFilter = document.getElementById('material-booth-filter');
+    const sortSelect = document.getElementById('material-sort');
+    
+    if (boothFilter && boothFilter.value !== 'all') {
+        const boothId = parseInt(boothFilter.value);
+        materials = materials.filter(m => m.boothId === boothId);
+    }
+    
+    if (sortSelect) {
+        switch (sortSelect.value) {
+            case 'time-desc':
+                materials.sort((a, b) => b.collectedAt - a.collectedAt);
+                break;
+            case 'time-asc':
+                materials.sort((a, b) => a.collectedAt - b.collectedAt);
+                break;
+            case 'name':
+                materials.sort((a, b) => a.name.localeCompare(b.name));
+                break;
+        }
+    }
+    
+    if (materials.length === 0) {
+        grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><i class="fas fa-folder-open"></i>暂无已领资料</div>';
         return;
     }
     
-    grid.innerHTML = appState.collectedMaterials.map((item, index) => `
-        <div class="material-item">
-            <button class="btn-remove-material" data-index="${index}" title="移除">
-                <i class="fas fa-times"></i>
-            </button>
+    grid.innerHTML = materials.map((item) => `
+        <div class="material-item material-card" data-material-id="${item.id}">
             <div class="material-icon"><i class="fas ${item.icon}"></i></div>
             <div class="material-info">
                 <div class="material-name">${item.name}</div>
                 <div class="material-meta">${item.booth} · ${item.size}</div>
+                <div class="material-meta" style="margin-top:4px;font-size:11px;opacity:0.7;">
+                    领取于 ${formatTimeAgo(item.collectedAt)}
+                </div>
+            </div>
+            <div class="material-card-actions">
+                <button class="material-action-btn" data-action="view" data-material-id="${item.id}">
+                    <i class="fas fa-eye"></i> 查看
+                </button>
+                <button class="material-action-btn" data-action="download" data-material-id="${item.id}">
+                    <i class="fas fa-download"></i> 下载
+                </button>
+                <button class="material-action-btn remove" data-action="remove" data-material-id="${item.id}">
+                    <i class="fas fa-trash-alt"></i> 移除
+                </button>
             </div>
         </div>
     `).join('');
 
-    grid.querySelectorAll('.btn-remove-material').forEach(btn => {
+    grid.querySelectorAll('.material-action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const index = parseInt(btn.dataset.index);
-            const material = appState.collectedMaterials[index];
-            if (material && confirm('确定要移除这份资料吗？')) {
-                removeMaterial(material.id);
+            const action = btn.dataset.action;
+            const materialId = btn.dataset.materialId;
+            
+            switch (action) {
+                case 'view':
+                    openMaterialDetail(materialId);
+                    break;
+                case 'download':
+                    const mat = appState.collectedMaterials.find(m => m.id === materialId);
+                    if (mat) {
+                        alert(`正在下载: ${mat.name}`);
+                    }
+                    break;
+                case 'remove':
+                    if (confirm('确定要移除这份资料吗？移除后可在对应展位重新领取。')) {
+                        removeMaterial(materialId);
+                    }
+                    break;
             }
         });
     });
+}
+
+function initMaterialFilters() {
+    const boothFilter = document.getElementById('material-booth-filter');
+    const sortSelect = document.getElementById('material-sort');
+    
+    if (boothFilter) {
+        const booths = [...new Set(appState.collectedMaterials.map(m => m.boothId))];
+        booths.forEach(boothId => {
+            const booth = mockData.booths.find(b => b.id === boothId);
+            if (booth) {
+                const option = document.createElement('option');
+                option.value = boothId;
+                option.textContent = booth.name;
+                boothFilter.appendChild(option);
+            }
+        });
+        
+        boothFilter.addEventListener('change', renderMaterials);
+    }
+    
+    if (sortSelect) {
+        sortSelect.addEventListener('change', renderMaterials);
+    }
 }
 
 function initBoothModal() {
@@ -623,11 +723,7 @@ function openBoothInside(boothId) {
     
     if (!booth || !content) return;
 
-    const materials = [
-        { name: '产品白皮书.pdf', icon: 'fa-file-pdf', size: '2.3MB' },
-        { name: '品牌介绍.pptx', icon: 'fa-file-powerpoint', size: '8.5MB' },
-        { name: '产品说明书.docx', icon: 'fa-file-word', size: '1.8MB' },
-    ];
+    startBoothVisit(boothId, booth.name);
 
     content.innerHTML = `
         <div class="booth-inside-header">
@@ -661,8 +757,10 @@ function openBoothInside(boothId) {
                                     data-product-id="${productId}"
                                     data-product-name="${p.name}"
                                     data-product-icon="${p.icon}"
+                                    data-product-desc="${p.desc}"
                                     data-booth-name="${booth.name}"
-                                    data-booth-id="${booth.id}">
+                                    data-booth-id="${booth.id}"
+                                    data-product-idx="${idx}">
                                 <i class="${isCollected ? 'fas' : 'far'} fa-star"></i> ${isCollected ? '已收藏' : '收藏'}
                             </button>
                         </div>
@@ -673,7 +771,7 @@ function openBoothInside(boothId) {
 
         <div class="booth-inside-tab-content" id="tab-materials">
             <div class="booth-materials-list">
-                ${materials.map((m, idx) => {
+                ${booth.materials.map((m, idx) => {
                     const materialId = `m-${booth.id}-${idx}`;
                     const isCollected = appState.collectedMaterials.some(cm => cm.id === materialId);
                     return `
@@ -688,7 +786,10 @@ function openBoothInside(boothId) {
                                 data-material-name="${m.name}"
                                 data-material-icon="${m.icon}"
                                 data-material-size="${m.size}"
-                                data-booth-name="${booth.name}">
+                                data-material-desc="${m.desc}"
+                                data-booth-name="${booth.name}"
+                                data-booth-id="${booth.id}"
+                                data-material-idx="${idx}">
                             <i class="fas ${isCollected ? 'fa-check' : 'fa-download'}"></i>
                             ${isCollected ? '已领取' : '领取资料'}
                         </button>
@@ -727,40 +828,185 @@ function openBoothInside(boothId) {
             const productId = btn.dataset.productId;
             const productName = btn.dataset.productName;
             const productIcon = btn.dataset.productIcon;
+            const productDesc = btn.dataset.productDesc;
             const boothName = btn.dataset.boothName;
             const boothId = parseInt(btn.dataset.boothId);
+            const productIdx = parseInt(btn.dataset.productIdx);
+            
+            recordProductView(boothId, productIdx);
             
             toggleProductCollection({
                 id: productId,
                 name: productName,
                 booth: boothName,
                 boothId: boothId,
-                icon: productIcon
+                icon: productIcon,
+                desc: productDesc,
             });
         });
     });
 
     content.querySelectorAll('.btn-download-material').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (btn.classList.contains('downloaded')) return;
-            
             const materialId = btn.dataset.materialId;
             const materialName = btn.dataset.materialName;
             const materialIcon = btn.dataset.materialIcon;
             const materialSize = btn.dataset.materialSize;
+            const materialDesc = btn.dataset.materialDesc;
             const boothName = btn.dataset.boothName;
+            const boothId = parseInt(btn.dataset.boothId);
+            const materialIdx = parseInt(btn.dataset.materialIdx);
             
-            toggleMaterialCollection({
-                id: materialId,
-                name: materialName,
-                booth: boothName,
-                size: materialSize,
-                icon: materialIcon
-            });
+            const isCollected = appState.collectedMaterials.some(m => m.id === materialId);
+            
+            if (!isCollected) {
+                const result = toggleMaterialCollection({
+                    id: materialId,
+                    name: materialName,
+                    booth: boothName,
+                    boothId: boothId,
+                    size: materialSize,
+                    icon: materialIcon,
+                    desc: materialDesc,
+                });
+                if (result) {
+                    recordMaterialCollection(boothId, materialIdx);
+                }
+            }
         });
     });
 
     modal.classList.add('active');
+}
+
+function startBoothVisit(boothId, boothName) {
+    endBoothVisit();
+    appState.currentBoothVisit = {
+        boothId: boothId,
+        boothName: boothName,
+        enterTime: Date.now(),
+    };
+}
+
+function endBoothVisit() {
+    if (!appState.currentBoothVisit) return;
+    
+    const { boothId, boothName, enterTime } = appState.currentBoothVisit;
+    const duration = Math.floor((Date.now() - enterTime) / 1000);
+    
+    if (duration > 0) {
+        const existingIdx = appState.visitRecords.findIndex(r => r.boothId === boothId);
+        
+        if (existingIdx > -1) {
+            const record = appState.visitRecords[existingIdx];
+            record.lastVisitAt = Date.now();
+            record.duration += duration;
+            record.visitCount += 1;
+            appState.visitRecords.splice(existingIdx, 1);
+            appState.visitRecords.unshift(record);
+        } else {
+            appState.visitRecords.unshift({
+                boothId: boothId,
+                boothName: boothName,
+                lastVisitAt: Date.now(),
+                duration: duration,
+                viewedProducts: [],
+                collectedMaterials: [],
+                visitCount: 1,
+            });
+        }
+        
+        refreshAllVisitRecordUI();
+    }
+    
+    appState.currentBoothVisit = null;
+}
+
+function recordProductView(boothId, productIdx) {
+    const record = appState.visitRecords.find(r => r.boothId === boothId);
+    if (record && !record.viewedProducts.includes(productIdx)) {
+        record.viewedProducts.push(productIdx);
+    }
+}
+
+function recordMaterialCollection(boothId, materialIdx) {
+    const record = appState.visitRecords.find(r => r.boothId === boothId);
+    if (record && !record.collectedMaterials.includes(materialIdx)) {
+        record.collectedMaterials.push(materialIdx);
+    }
+    refreshAllVisitRecordUI();
+}
+
+function refreshAllVisitRecordUI() {
+    renderRecentVisits();
+    renderAssetsPage();
+    updateAllStats();
+}
+
+function renderRecentVisits() {
+    const list = document.getElementById('recent-visits-list');
+    if (!list) return;
+    
+    const records = [...appState.visitRecords].sort((a, b) => b.lastVisitAt - a.lastVisitAt);
+    
+    if (records.length === 0) {
+        list.innerHTML = '<div class="empty-state"><i class="fas fa-history"></i>暂无参观记录</div>';
+        return;
+    }
+    
+    list.innerHTML = records.slice(0, 5).map(record => {
+        const timeStr = formatTimeAgo(record.lastVisitAt);
+        const durationStr = formatDuration(record.duration);
+        return `
+            <div class="recent-visit-item" data-booth-id="${record.boothId}">
+                <div class="recent-visit-icon"><i class="fas fa-store"></i></div>
+                <div class="recent-visit-info">
+                    <div class="recent-visit-name">${record.boothName}</div>
+                    <div class="recent-visit-meta">
+                        <span><i class="fas fa-clock"></i> ${timeStr}</span>
+                        <span><i class="fas fa-hourglass-half"></i> 停留${durationStr}</span>
+                        <span><i class="fas fa-box"></i> 看了${record.viewedProducts.length}件展品</span>
+                        <span><i class="fas fa-file"></i> 领了${record.collectedMaterials.length}份资料</span>
+                    </div>
+                </div>
+                <div class="recent-visit-arrow"><i class="fas fa-chevron-right"></i></div>
+            </div>
+        `;
+    }).join('');
+    
+    list.querySelectorAll('.recent-visit-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const boothId = parseInt(item.dataset.boothId);
+            closeAllModals();
+            openBoothInside(boothId);
+        });
+    });
+}
+
+function formatTimeAgo(timestamp) {
+    const diff = Date.now() - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (hours < 24) return `${hours}小时前`;
+    return `${days}天前`;
+}
+
+function formatDuration(seconds) {
+    if (seconds < 60) return `${seconds}秒`;
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (minutes < 60) return `${minutes}分${secs}秒`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}小时${mins}分`;
+}
+
+function closeAllModals() {
+    document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
 }
 
 function initModals() {
@@ -772,10 +1018,12 @@ function initModals() {
     if (boothInsideClose && boothInsideModal) {
         boothInsideClose.addEventListener('click', () => {
             boothInsideModal.classList.remove('active');
+            endBoothVisit();
         });
         boothInsideModal.addEventListener('click', (e) => {
             if (e.target === boothInsideModal) {
                 boothInsideModal.classList.remove('active');
+                endBoothVisit();
             }
         });
     }
@@ -787,6 +1035,34 @@ function initModals() {
         liveModal.addEventListener('click', (e) => {
             if (e.target === liveModal) {
                 liveModal.classList.remove('active');
+            }
+        });
+    }
+
+    const productDetailModal = document.getElementById('product-detail-modal');
+    const productDetailClose = document.querySelector('.product-detail-close');
+    
+    if (productDetailClose && productDetailModal) {
+        productDetailClose.addEventListener('click', () => {
+            productDetailModal.classList.remove('active');
+        });
+        productDetailModal.addEventListener('click', (e) => {
+            if (e.target === productDetailModal) {
+                productDetailModal.classList.remove('active');
+            }
+        });
+    }
+
+    const materialDetailModal = document.getElementById('material-detail-modal');
+    const materialDetailClose = document.querySelector('.material-detail-close');
+    
+    if (materialDetailClose && materialDetailModal) {
+        materialDetailClose.addEventListener('click', () => {
+            materialDetailModal.classList.remove('active');
+        });
+        materialDetailModal.addEventListener('click', (e) => {
+            if (e.target === materialDetailModal) {
+                materialDetailModal.classList.remove('active');
             }
         });
     }
@@ -1474,6 +1750,7 @@ function initDashboard() {
     renderEventRanking();
     initStayTime();
     initOnlineCount();
+    updateAllStats();
 }
 
 function renderBoothRanking() {
@@ -1538,6 +1815,7 @@ function initProfile() {
     initProfileTabs();
     renderBlacklist();
     renderCollectedCards();
+    renderAssetsPage();
     initRatingStars();
     initSubmitSurvey();
 }
@@ -1635,4 +1913,359 @@ function initSubmitSurvey() {
             }, 2000);
         });
     }
+}
+
+function openProductDetail(productId) {
+    const modal = document.getElementById('product-detail-modal');
+    const content = document.getElementById('product-detail-content');
+    const product = appState.collectedProducts.find(p => p.id === productId);
+    
+    if (!product || !content) return;
+    
+    const isCollected = appState.collectedProducts.some(p => p.id === productId);
+    const collectTime = product.collectedAt ? formatTimeAgo(product.collectedAt) : '未知';
+    
+    content.innerHTML = `
+        <div class="detail-header">
+            <div class="detail-icon-large"><i class="fas ${product.icon}"></i></div>
+            <div class="detail-main-info">
+                <h2>${product.name}</h2>
+                <div class="detail-booth"><i class="fas fa-store"></i> 来源：${product.booth}</div>
+                <div class="detail-time"><i class="far fa-clock"></i> 收藏于 ${collectTime}</div>
+            </div>
+        </div>
+        
+        <div class="detail-section">
+            <h3><i class="fas fa-info-circle"></i> 展品说明</h3>
+            <div class="detail-desc">${product.desc || '暂无详细描述'}</div>
+        </div>
+        
+        <div class="detail-section">
+            <h3><i class="fas fa-chart-bar"></i> 展品信息</h3>
+            <div class="detail-stats">
+                <div class="detail-stat">
+                    <span class="detail-stat-value">${isCollected ? '已收藏' : '未收藏'}</span>
+                    <span class="detail-stat-label">收藏状态</span>
+                </div>
+                <div class="detail-stat">
+                    <span class="detail-stat-value">${product.boothId || '-'}</span>
+                    <span class="detail-stat-label">展位编号</span>
+                </div>
+                <div class="detail-stat">
+                    <span class="detail-stat-value">${collectTime}</span>
+                    <span class="detail-stat-label">收藏时长</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="detail-actions">
+            <button class="detail-btn primary" id="btn-go-booth-from-product">
+                <i class="fas fa-door-open"></i> 进入来源展位
+            </button>
+            <button class="detail-btn secondary ${isCollected ? 'favorited' : ''}" id="btn-toggle-product-fav">
+                <i class="${isCollected ? 'fas' : 'far'} fa-star"></i> ${isCollected ? '取消收藏' : '收藏展品'}
+            </button>
+        </div>
+    `;
+    
+    const goBoothBtn = document.getElementById('btn-go-booth-from-product');
+    if (goBoothBtn) {
+        goBoothBtn.addEventListener('click', () => {
+            closeAllModals();
+            if (product.boothId) {
+                openBoothInside(product.boothId);
+            }
+        });
+    }
+    
+    const toggleBtn = document.getElementById('btn-toggle-product-fav');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            toggleProductCollection(product);
+            openProductDetail(productId);
+        });
+    }
+    
+    modal.classList.add('active');
+}
+
+function openMaterialDetail(materialId) {
+    const modal = document.getElementById('material-detail-modal');
+    const content = document.getElementById('material-detail-content');
+    const material = appState.collectedMaterials.find(m => m.id === materialId);
+    
+    if (!material || !content) return;
+    
+    const collectTime = material.collectedAt ? formatTimeAgo(material.collectedAt) : '未知';
+    
+    content.innerHTML = `
+        <div class="detail-header">
+            <div class="detail-icon-large"><i class="fas ${material.icon}"></i></div>
+            <div class="detail-main-info">
+                <h2>${material.name}</h2>
+                <div class="detail-booth"><i class="fas fa-store"></i> 来源：${material.booth}</div>
+                <div class="detail-time"><i class="far fa-clock"></i> 领取于 ${collectTime}</div>
+            </div>
+        </div>
+        
+        <div class="detail-section">
+            <h3><i class="fas fa-info-circle"></i> 资料说明</h3>
+            <div class="detail-desc">${material.desc || '暂无详细描述'}</div>
+        </div>
+        
+        <div class="detail-section">
+            <h3><i class="fas fa-file"></i> 文件信息</h3>
+            <div class="detail-stats">
+                <div class="detail-stat">
+                    <span class="detail-stat-value">${material.size || '-'}</span>
+                    <span class="detail-stat-label">文件大小</span>
+                </div>
+                <div class="detail-stat">
+                    <span class="detail-stat-value">已领取</span>
+                    <span class="detail-stat-label">领取状态</span>
+                </div>
+                <div class="detail-stat">
+                    <span class="detail-stat-value">${collectTime}</span>
+                    <span class="detail-stat-label">领取时长</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="detail-actions">
+            <button class="detail-btn primary" id="btn-download-material-detail">
+                <i class="fas fa-download"></i> 重新下载
+            </button>
+            <button class="detail-btn secondary" id="btn-go-booth-from-material">
+                <i class="fas fa-store"></i> 进入来源展位
+            </button>
+            <button class="detail-btn danger" id="btn-remove-material-detail">
+                <i class="fas fa-trash-alt"></i> 移除资料
+            </button>
+        </div>
+    `;
+    
+    const downloadBtn = document.getElementById('btn-download-material-detail');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+            alert(`正在下载: ${material.name}`);
+        });
+    }
+    
+    const goBoothBtn = document.getElementById('btn-go-booth-from-material');
+    if (goBoothBtn) {
+        goBoothBtn.addEventListener('click', () => {
+            closeAllModals();
+            if (material.boothId) {
+                openBoothInside(material.boothId);
+            }
+        });
+    }
+    
+    const removeBtn = document.getElementById('btn-remove-material-detail');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+            if (confirm('确定要移除这份资料吗？移除后可在对应展位重新领取。')) {
+                removeMaterial(materialId);
+                modal.classList.remove('active');
+            }
+        });
+    }
+    
+    modal.classList.add('active');
+}
+
+function updateAllStats() {
+    const favBoothCount = appState.favoriteBooths.length;
+    const favProductCount = appState.collectedProducts.length;
+    const materialCount = appState.collectedMaterials.length;
+    const visitCount = appState.visitRecords.length;
+    
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayVisitCount = appState.visitRecords.filter(r => r.lastVisitAt >= todayStart.getTime()).length;
+    
+    const statFavBooths = document.getElementById('stat-fav-booths');
+    if (statFavBooths) statFavBooths.textContent = favBoothCount;
+    
+    const statFavProducts = document.getElementById('stat-fav-products');
+    if (statFavProducts) statFavProducts.textContent = favProductCount;
+    
+    const statMaterials = document.getElementById('stat-collected-materials');
+    if (statMaterials) statMaterials.textContent = materialCount;
+    
+    const statVisited = document.getElementById('stat-visited-booths');
+    if (statVisited) statVisited.textContent = visitCount;
+    
+    const myBoothFavCount = document.getElementById('my-booth-fav-count');
+    if (myBoothFavCount) myBoothFavCount.textContent = favBoothCount;
+    
+    const myProductFavCount = document.getElementById('my-product-fav-count');
+    if (myProductFavCount) myProductFavCount.textContent = favProductCount;
+    
+    const myMaterialCount = document.getElementById('my-material-count');
+    if (myMaterialCount) myMaterialCount.textContent = materialCount;
+    
+    const myTodayVisitCount = document.getElementById('my-today-visit-count');
+    if (myTodayVisitCount) myTodayVisitCount.textContent = todayVisitCount || visitCount;
+}
+
+function renderAssetsPage() {
+    renderAssetBooths();
+    renderAssetProducts();
+    renderAssetMaterials();
+    renderAssetVisits();
+    updateAllStats();
+}
+
+function renderAssetBooths() {
+    const list = document.getElementById('assets-booths-list');
+    if (!list) return;
+    
+    const favBooths = mockData.booths.filter(b => appState.favoriteBooths.includes(b.id));
+    
+    if (favBooths.length === 0) {
+        list.innerHTML = '<div class="empty-state"><i class="fas fa-store"></i>暂无收藏展位</div>';
+        return;
+    }
+    
+    list.innerHTML = favBooths.slice(0, 6).map(booth => `
+        <div class="asset-mini-card" data-booth-id="${booth.id}">
+            <div class="asset-mini-icon"><i class="fas ${booth.icon}"></i></div>
+            <div class="asset-mini-name">${booth.name}</div>
+        </div>
+    `).join('');
+    
+    list.querySelectorAll('.asset-mini-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const boothId = parseInt(card.dataset.boothId);
+            switchPage('booths');
+            closeAllModals();
+            openBoothInside(boothId);
+        });
+    });
+}
+
+function renderAssetProducts() {
+    const list = document.getElementById('assets-products-list');
+    if (!list) return;
+    
+    const products = appState.collectedProducts;
+    
+    if (products.length === 0) {
+        list.innerHTML = '<div class="empty-state"><i class="fas fa-star"></i>暂无收藏展品</div>';
+        return;
+    }
+    
+    list.innerHTML = products.slice(0, 6).map(product => `
+        <div class="asset-mini-card" data-product-id="${product.id}">
+            <div class="asset-mini-icon"><i class="fas ${product.icon}"></i></div>
+            <div class="asset-mini-name">${product.name}</div>
+        </div>
+    `).join('');
+    
+    list.querySelectorAll('.asset-mini-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const productId = card.dataset.productId;
+            openProductDetail(productId);
+        });
+    });
+}
+
+function renderAssetMaterials() {
+    const list = document.getElementById('assets-materials-list');
+    if (!list) return;
+    
+    const materials = appState.collectedMaterials;
+    
+    if (materials.length === 0) {
+        list.innerHTML = '<div class="empty-state"><i class="fas fa-file"></i>暂无已领资料</div>';
+        return;
+    }
+    
+    list.innerHTML = materials.slice(0, 5).map(material => `
+        <div class="asset-mini-item" data-material-id="${material.id}">
+            <div class="asset-mini-item-icon"><i class="fas ${material.icon}"></i></div>
+            <div class="asset-mini-item-info">
+                <div class="asset-mini-item-name">${material.name}</div>
+                <div class="asset-mini-item-sub">${material.booth} · ${material.size}</div>
+            </div>
+        </div>
+    `).join('');
+    
+    list.querySelectorAll('.asset-mini-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const materialId = item.dataset.materialId;
+            openMaterialDetail(materialId);
+        });
+    });
+}
+
+function renderAssetVisits() {
+    const list = document.getElementById('assets-visits-list');
+    if (!list) return;
+    
+    const records = [...appState.visitRecords].sort((a, b) => b.lastVisitAt - a.lastVisitAt);
+    
+    if (records.length === 0) {
+        list.innerHTML = '<div class="empty-state"><i class="fas fa-history"></i>暂无参观记录</div>';
+        return;
+    }
+    
+    list.innerHTML = records.slice(0, 5).map(record => `
+        <div class="asset-mini-item" data-booth-id="${record.boothId}">
+            <div class="asset-mini-item-icon"><i class="fas fa-store"></i></div>
+            <div class="asset-mini-item-info">
+                <div class="asset-mini-item-name">${record.boothName}</div>
+                <div class="asset-mini-item-sub">${formatTimeAgo(record.lastVisitAt)} · 停留${formatDuration(record.duration)}</div>
+            </div>
+        </div>
+    `).join('');
+    
+    list.querySelectorAll('.asset-mini-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const boothId = parseInt(item.dataset.boothId);
+            switchPage('booths');
+            closeAllModals();
+            openBoothInside(boothId);
+        });
+    });
+}
+
+function switchPage(pageId) {
+    const navItems = document.querySelectorAll('.nav-item');
+    const pages = document.querySelectorAll('.page');
+    
+    navItems.forEach(nav => nav.classList.remove('active'));
+    const targetNav = document.querySelector(`.nav-item[data-page="${pageId}"]`);
+    if (targetNav) targetNav.classList.add('active');
+    
+    pages.forEach(page => page.classList.remove('active'));
+    const targetPage = document.getElementById(`page-${pageId}`);
+    if (targetPage) targetPage.classList.add('active');
+    
+    if (pageId === 'avatar') {
+        updateAvatarPreview();
+    }
+}
+
+function updateMaterialBoothFilter() {
+    const boothFilter = document.getElementById('material-booth-filter');
+    if (!boothFilter) return;
+    
+    const currentValue = boothFilter.value;
+    const booths = [...new Set(appState.collectedMaterials.map(m => m.boothId))];
+    
+    boothFilter.innerHTML = '<option value="all">全部展位</option>';
+    
+    booths.forEach(boothId => {
+        const booth = mockData.booths.find(b => b.id === boothId);
+        if (booth) {
+            const option = document.createElement('option');
+            option.value = boothId;
+            option.textContent = booth.name;
+            boothFilter.appendChild(option);
+        }
+    });
+    
+    boothFilter.value = currentValue || 'all';
 }

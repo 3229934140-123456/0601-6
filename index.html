@@ -255,8 +255,26 @@
                         </div>
 
                         <div class="my-materials">
-                            <h2 class="section-title"><i class="fas fa-file-download"></i> 已领资料</h2>
+                            <div class="section-header">
+                                <h2 class="section-title"><i class="fas fa-file-download"></i> 已领资料</h2>
+                                <div class="section-controls">
+                                    <select class="filter-select" id="material-booth-filter">
+                                        <option value="all">全部展位</option>
+                                    </select>
+                                    <select class="filter-select" id="material-sort">
+                                        <option value="time-desc">最新领取</option>
+                                        <option value="time-asc">最早领取</option>
+                                        <option value="name">按名称</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div class="materials-grid" id="materials-grid">
+                            </div>
+                        </div>
+
+                        <div class="my-recent-visits">
+                            <h2 class="section-title"><i class="fas fa-history"></i> 最近参观</h2>
+                            <div class="recent-visits-list" id="recent-visits-list">
                             </div>
                         </div>
                     </div>
@@ -542,6 +560,40 @@
                             </div>
                         </div>
 
+                        <div class="my-behavior-section">
+                            <h3><i class="fas fa-user-chart"></i> 我的行为统计</h3>
+                            <div class="behavior-cards">
+                                <div class="behavior-card">
+                                    <div class="behavior-icon booth"><i class="fas fa-store"></i></div>
+                                    <div class="behavior-info">
+                                        <span class="behavior-value" id="my-booth-fav-count">2</span>
+                                        <span class="behavior-label">已收藏展位</span>
+                                    </div>
+                                </div>
+                                <div class="behavior-card">
+                                    <div class="behavior-icon product"><i class="fas fa-star"></i></div>
+                                    <div class="behavior-info">
+                                        <span class="behavior-value" id="my-product-fav-count">3</span>
+                                        <span class="behavior-label">展品收藏数</span>
+                                    </div>
+                                </div>
+                                <div class="behavior-card">
+                                    <div class="behavior-icon material"><i class="fas fa-file-download"></i></div>
+                                    <div class="behavior-info">
+                                        <span class="behavior-value" id="my-material-count">3</span>
+                                        <span class="behavior-label">已领资料数</span>
+                                    </div>
+                                </div>
+                                <div class="behavior-card">
+                                    <div class="behavior-icon visit"><i class="fas fa-door-open"></i></div>
+                                    <div class="behavior-info">
+                                        <span class="behavior-value" id="my-today-visit-count">1</span>
+                                        <span class="behavior-label">今日访问展位</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="dashboard-bottom">
                             <div class="ranking-card">
                                 <h3><i class="fas fa-fire"></i> 热门展位排行</h3>
@@ -594,12 +646,71 @@
 
                         <div class="profile-tabs">
                             <button class="p-tab active" data-ptab="survey">问卷反馈</button>
+                            <button class="p-tab" data-ptab="assets">我的参观资产</button>
                             <button class="p-tab" data-ptab="blacklist">黑名单管理</button>
                             <button class="p-tab" data-ptab="visitors">访客名片</button>
                             <button class="p-tab" data-ptab="settings">账户设置</button>
                         </div>
 
                         <div class="profile-content">
+                            <div class="p-content" id="p-assets">
+                                <h3><i class="fas fa-box"></i> 我的参观资产</h3>
+                                <div class="assets-stats">
+                                    <div class="asset-stat-card">
+                                        <div class="asset-stat-icon booth-icon"><i class="fas fa-store"></i></div>
+                                        <div class="asset-stat-info">
+                                            <span class="asset-stat-num" id="stat-fav-booths">2</span>
+                                            <span class="asset-stat-label">收藏展位</span>
+                                        </div>
+                                    </div>
+                                    <div class="asset-stat-card">
+                                        <div class="asset-stat-icon product-icon"><i class="fas fa-star"></i></div>
+                                        <div class="asset-stat-info">
+                                            <span class="asset-stat-num" id="stat-fav-products">3</span>
+                                            <span class="asset-stat-label">收藏展品</span>
+                                        </div>
+                                    </div>
+                                    <div class="asset-stat-card">
+                                        <div class="asset-stat-icon material-icon"><i class="fas fa-file-download"></i></div>
+                                        <div class="asset-stat-info">
+                                            <span class="asset-stat-num" id="stat-collected-materials">3</span>
+                                            <span class="asset-stat-label">已领资料</span>
+                                        </div>
+                                    </div>
+                                    <div class="asset-stat-card">
+                                        <div class="asset-stat-icon visit-icon"><i class="fas fa-history"></i></div>
+                                        <div class="asset-stat-info">
+                                            <span class="asset-stat-num" id="stat-visited-booths">3</span>
+                                            <span class="asset-stat-label">参观展位</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="assets-section">
+                                    <h4><i class="fas fa-store"></i> 收藏的展位</h4>
+                                    <div class="assets-mini-grid" id="assets-booths-list">
+                                    </div>
+                                </div>
+
+                                <div class="assets-section">
+                                    <h4><i class="fas fa-star"></i> 收藏的展品</h4>
+                                    <div class="assets-mini-grid" id="assets-products-list">
+                                    </div>
+                                </div>
+
+                                <div class="assets-section">
+                                    <h4><i class="fas fa-file-download"></i> 已领资料</h4>
+                                    <div class="assets-mini-list" id="assets-materials-list">
+                                    </div>
+                                </div>
+
+                                <div class="assets-section">
+                                    <h4><i class="fas fa-history"></i> 最近参观</h4>
+                                    <div class="assets-mini-list" id="assets-visits-list">
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="p-content active" id="p-survey">
                                 <h3><i class="fas fa-clipboard-list"></i> 展会体验反馈问卷</h3>
                                 <p class="survey-desc">您的反馈对我们非常重要，完成问卷可获得100积分奖励</p>
@@ -800,6 +911,22 @@
                         <button id="live-send-btn"><i class="fas fa-paper-plane"></i></button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="product-detail-modal" class="modal">
+        <div class="modal-content product-detail-modal">
+            <span class="modal-close product-detail-close">&times;</span>
+            <div class="product-detail-content" id="product-detail-content">
+            </div>
+        </div>
+    </div>
+
+    <div id="material-detail-modal" class="modal">
+        <div class="modal-content material-detail-modal">
+            <span class="modal-close material-detail-close">&times;</span>
+            <div class="material-detail-content" id="material-detail-content">
             </div>
         </div>
     </div>
